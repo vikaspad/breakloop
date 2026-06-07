@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SystemConfig {
+  id              String   @id @default("singleton")  // Only one config allowed
+  jwtSecret       String                               // Stored as encrypted
+  encryptionKey   String                               // Stored as encrypted
+  isSetupComplete Boolean  @default(false)
+  setupCompletedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  password          String
+  name              String
+  agents            Agent[]
+  evaluatorConfig   EvaluatorConfig?
+  createdAt         DateTime           @default(now())
+}
+
+model EvaluatorConfig {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evaluatorType String   @default("BUILTIN")  // BUILTIN, OPENAI, CLAUDE
+  model         String   @default("gpt-4o-mini")
+  apiKey        String?  // encrypted
+  isEnabled     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Agent {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  type         AgentType
+  connType     ConnType
+  endpoint     String?
+  authType     AuthType    @default(BEARER)
+  authToken    String?
+  inputSchema  Json?
+  outputSchema Json?
+  evalCriteria String[]
+  systemPrompt String?
+  tags         String[]
+  status       AgentStatus @default(PENDING)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  suites       TestSuite[]
+  runs         Run[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model TestSuite {
+  id        String     @id @default(cuid())
+  name      String
+  tags      String[]
+  agentId   String
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  cases     TestCase[]
+  runs      Run[]
+  createdAt DateTime   @default(now())
+}
+
+model TestCase {
+  id             String       @id @default(cuid())
+  input          String
+  expectedOutput String?
+  behaviorTags   String[]
+  passCriteria   String?
+  suiteId        String
+  suite          TestSuite    @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  results        CaseResult[]
+  createdAt      DateTime     @default(now())
+}
+
+model Run {
+  id           String       @id @default(cuid())
+  agentId      String
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  suiteId      String
+  suite        TestSuite    @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  status       RunStatus    @default(PENDING)
+  overallScore Int?
+  summary      Json?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  caseResults  CaseResult[]
+  createdAt    DateTime     @default(now())
+}
+
+model CaseResult {
+  id          String     @id @default(cuid())
+  runId       String
+  run         Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  caseId      String
+  case        TestCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  status      EvalStatus
+  agentOutput String
+  latencyMs   Int
+  scores      Json
+  failureTags String[]
+  evalReason  String
+  traceSteps  Json[]
+  createdAt   DateTime   @default(now())
+}
+
+enum AgentType {
+  CONVERSATIONAL
+  TOOL_USING
+  AUTONOMOUS
+  MULTI_AGENT
+  RAG_PIPELINE
+  CUSTOM
+}
+
+enum ConnType {
+  REST
+  CLAUDE_API
+  OPENAI
+  LANGCHAIN
+  WEBSOCKET
+  MOCK
+}
+
+enum AuthType {
+  BEARER
+  API_KEY
+  BASIC
+  NONE
+}
+
+enum AgentStatus {
+  PENDING
+  HEALTHY
+  WARN
+  FAIL
+}
+
+enum RunStatus {
+  PENDING
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+enum EvalStatus {
+  PASS
+  WARN
+  FAIL
+}
